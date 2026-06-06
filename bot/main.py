@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import os
 import random
 import re
 import tempfile
 import threading
 from html import escape
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytz
@@ -583,6 +585,40 @@ async def morning_briefing(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Health server (keeps Render Web Service alive)
+# ---------------------------------------------------------------------------
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, *args):
+        pass  # silence HTTP access logs
+
+
+def _start_health_server() -> None:
+    port = int(os.getenv("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    logging.info("Health server running on port %d", port)
+
+
+async def _self_ping(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ping own health endpoint every 14 min to prevent Render free-tier spin-down."""
+    url = os.getenv("RENDER_EXTERNAL_URL")
+    if not url:
+        return
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.get(url)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
 
@@ -610,6 +646,9 @@ def build_app() -> Application:
         raise RuntimeError("Configure TELEGRAM_BOT_TOKEN no arquivo .env.")
 
     db.initialize()
+
+    # Health check HTTP server — required for Render Web Service (free tier)
+    _start_health_server()
 
     # Pre-load Whisper model in background to avoid cold-start delay on first audio
     threading.Thread(target=local_transcriber.preload, daemon=True).start()
@@ -653,6 +692,8 @@ def build_app() -> Application:
         time=dt.time(9, 30, tzinfo=tz),
         days=(5, 6),  # Sat–Sun
     )
+    # Self-ping every 14 min to prevent Render free-tier spin-down
+    app.job_queue.run_repeating(_self_ping, interval=840, first=120)
 
     return app
 
