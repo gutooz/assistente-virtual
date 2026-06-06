@@ -1,0 +1,19 @@
+services:
+  - type: worker
+    name: assistente-guto
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m bot.main
+    disk:
+      name: dados
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_PATH
+        value: /data/assistant.db
+      - key: TIMEZONE
+        value: America/Sao_Paulo
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false

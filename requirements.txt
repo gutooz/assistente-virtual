@@ -1,0 +1,10 @@
+apscheduler==3.10.4
+dateparser==1.2.0
+duckduckgo-search>=6.0.0
+edge-tts==7.2.8
+faster-whisper==1.2.1
+google-genai==2.3.0
+opencv-python-headless
+python-dotenv==1.0.1
+python-telegram-bot[job-queue]==21.3
+pytz==2024.1
